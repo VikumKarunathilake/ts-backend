@@ -1,4 +1,4 @@
-// src\index.ts
+// index.ts
 import express, { Request, Response, NextFunction } from 'express';
 import { getImages, deleteImage, authenticateUser } from './api'; // Assumes registerUser is implemented in api.ts
 import jwt from 'jsonwebtoken';
@@ -68,19 +68,22 @@ app.post('/api/auth/login', async (req: Request, res: Response): Promise<void> =
 // Get images endpoint
 app.get('/api/images', async (req: Request, res: Response): Promise<void> => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    // Parse query parameters for pagination
+    const page = parseInt(req.query.page as string);
+    const limit = parseInt(req.query.limit as string);
 
-    // Validate pagination parameters
-    if (page < 1 || limit < 1 || limit > 100) {
-      res.status(400).json({ error: 'Invalid pagination parameters' });
+    // If neither page nor limit is provided, fetch all data
+    if (isNaN(page) || isNaN(limit)) {
+      const images = await getImages(); // Fetch all images
+      res.json(images); // Send all images response
       return;
     }
 
-    const result = await getImages(page, limit);
-    res.json(result);
+    // Otherwise, fetch paginated data
+    const images = await getImages(page, limit);
+    res.json(images); // Send paginated response
   } catch (error) {
-    console.error('Failed to fetch images:', error);
+    console.error('Error fetching images:', error);
     res.status(500).json({ error: 'Failed to fetch images' });
   }
 });

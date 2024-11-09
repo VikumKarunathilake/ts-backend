@@ -1,23 +1,6 @@
 import mysql from 'mysql2/promise';
 import jwt from 'jsonwebtoken';
 import { config } from './config';
-import { RowDataPacket, ResultSetHeader } from 'mysql2';
-
-interface GeneratedImage extends RowDataPacket {
-  id: number;
-  generation_prompt: string;
-  generation_timestamp: Date;
-  imgbb_display_url: string;
-  imgbb_title: string;
-  imgbb_width: number;
-  imgbb_height: number;
-  imgbb_size: number;
-}
-
-interface PaginatedResponse {
-  images: GeneratedImage[];
-  total: number;
-}
 
 const pool = mysql.createPool(config.db);
 
@@ -29,6 +12,7 @@ export async function authenticateUser(username: string, password: string) {
     );
 
     const user = rows[0];
+    // Check if user exists and passwords match (using plaintext comparison)
     if (!user || password !== user.password) {
       return null;
     }
@@ -53,19 +37,23 @@ export async function authenticateUser(username: string, password: string) {
   }
 }
 
-export async function getImages(page: number = 1, limit: number = 10): Promise<PaginatedResponse> {
+export async function getImages(page?: number, limit?: number) {
   try {
-    // Calculate offset
+    // If page or limit is not provided, fetch all data (no pagination)
+    if (page === undefined || limit === undefined) {
+      const [rows] = await pool.query(`
+        SELECT id, generation_prompt, generation_timestamp, 
+               imgbb_display_url, imgbb_title, imgbb_width, 
+               imgbb_height, imgbb_size
+        FROM generated_images 
+        ORDER BY generation_timestamp DESC
+      `);
+      return rows;
+    }
+
+    // Otherwise, fetch paginated data
     const offset = (page - 1) * limit;
-
-    // Get total count
-    const [countResult] = await pool.query<GeneratedImage[]>(
-      'SELECT COUNT(*) as total FROM generated_images'
-    );
-    const total = (countResult[0] as any).total;
-
-    // Get paginated results
-    const [images] = await pool.query<GeneratedImage[]>(`
+    const [rows] = await pool.query(`
       SELECT id, generation_prompt, generation_timestamp, 
              imgbb_display_url, imgbb_title, imgbb_width, 
              imgbb_height, imgbb_size
@@ -74,15 +62,14 @@ export async function getImages(page: number = 1, limit: number = 10): Promise<P
       LIMIT ? OFFSET ?
     `, [limit, offset]);
 
-    return {
-      images: images,
-      total
-    };
+    return rows;
   } catch (error) {
     console.error('Database error:', error);
     throw error;
   }
 }
+
+
 
 export async function deleteImage(id: number) {
   try {
