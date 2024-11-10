@@ -30,5 +30,8 @@
     "mysql2": "^3.11.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
