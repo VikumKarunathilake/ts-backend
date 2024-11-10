@@ -1,11 +1,16 @@
-// index.ts
 import express, { Request, Response, NextFunction } from 'express';
-import { getImages, deleteImage, authenticateUser } from './api'; // Assumes registerUser is implemented in api.ts
-import jwt from 'jsonwebtoken';
+import { getImages, deleteImage, authenticateWithGoogle } from './api';
+import { OAuth2Client } from 'google-auth-library';
+import { config } from './config';
 
-// Extend the Request interface to include user information
 interface UserRequest extends Request {
-  user?: { id: number; username: string; is_admin: boolean };
+  user?: {
+    id: number;
+    username: string;
+    email: string;
+    profile_picture: string;
+    is_admin: boolean;
+  };
 }
 
 const app = express();
@@ -13,75 +18,74 @@ const port = 3000;
 
 app.use(express.json());
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const oauth2Client = new OAuth2Client(config.google.clientId);
 
-const authenticateToken = (req: UserRequest, res: Response, next: NextFunction): void => {
+const authenticateToken = async (req: UserRequest, res: Response, next: NextFunction): Promise<void> => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const idToken = authHeader && authHeader.split(' ')[1];
 
-  if (!token) {
+  if (!idToken) {
     res.status(401).json({ error: 'Access denied' });
-    return; // Ensure to return after sending response
+    return;
   }
 
   try {
-    const user = jwt.verify(token, JWT_SECRET) as { id: number; username: string; is_admin: boolean };
-    req.user = user; // Now TypeScript recognizes req.user
+    const ticket = await oauth2Client.verifyIdToken({
+      idToken: idToken,
+      audience: config.google.clientId,
+    });
+    const payload = ticket.getPayload();
+    if (!payload) {
+      throw new Error('Invalid token');
+    }
+    req.user = {
+      id: parseInt(payload['sub']),
+      username: payload['name'] || '',
+      email: payload['email'] || '',
+      profile_picture: payload['picture'] || '',
+      is_admin: false, // Or set to true based on your application logic
+    };
+    // You can add custom logic here to set `is_admin` based on other conditions
     next();
   } catch (error) {
     res.status(403).json({ error: 'Invalid token' });
   }
 };
 
-// Middleware to check for admin access
 const isAdmin = (req: UserRequest, res: Response, next: NextFunction): void => {
   if (!req.user?.is_admin) {
     res.status(403).json({ error: 'Admin access required' });
-    return; // Ensure to return after sending response
+    return;
   }
   next();
 };
 
-// Login endpoint
-app.post('/api/auth/login', async (req: Request, res: Response): Promise<void> => {
+// Google OAuth login endpoint
+app.post('/api/auth/google', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { username, password } = req.body;
+    const { idToken } = req.body;
 
-    if (!username || !password) {
-      res.status(400).json({ error: 'Username and password are required' });
-      return; // Ensure to return after sending response
+    if (!idToken) {
+      res.status(400).json({ error: 'Google ID token is required' });
+      return;
     }
 
-    const result = await authenticateUser(username, password);
-    if (!result) {
-      res.status(401).json({ error: 'Invalid credentials' });
-      return; // Ensure to return after sending response
-    }
-
+    const result = await authenticateWithGoogle(idToken);
     res.json(result);
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Google login error:', error);
     res.status(500).json({ error: 'Authentication failed' });
   }
 });
 
 // Get images endpoint
-app.get('/api/images', async (req: Request, res: Response): Promise<void> => {
+app.get('/api/images', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    // Parse query parameters for pagination
     const page = parseInt(req.query.page as string);
     const limit = parseInt(req.query.limit as string);
 
-    // If neither page nor limit is provided, fetch all data
-    if (isNaN(page) || isNaN(limit)) {
-      const images = await getImages(); // Fetch all images
-      res.json(images); // Send all images response
-      return;
-    }
-
-    // Otherwise, fetch paginated data
     const images = await getImages(page, limit);
-    res.json(images); // Send paginated response
+    res.json(images);
   } catch (error) {
     console.error('Error fetching images:', error);
     res.status(500).json({ error: 'Failed to fetch images' });
@@ -98,8 +102,6 @@ app.delete('/api/images/:id', authenticateToken, isAdmin, async (req: UserReques
   }
 });
 
-
-// Start server
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
