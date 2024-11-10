@@ -66,6 +66,10 @@ export async function authenticateWithGoogle(idToken: string) {
 
 export async function getImages(page?: number, limit?: number) {
   try {
+    // Ensure that page and limit are valid numbers before using them in queries
+    const validPage = page && !isNaN(page) && page > 0 ? page : 1; // Default to page 1 if undefined or invalid
+    const validLimit = limit && !isNaN(limit) && limit > 0 ? limit : 10; // Default to 10 if undefined or invalid
+
     // If page or limit is not provided, fetch all data (no pagination)
     if (page === undefined || limit === undefined) {
       const { rows } = await sql`
@@ -79,14 +83,14 @@ export async function getImages(page?: number, limit?: number) {
     }
 
     // Otherwise, fetch paginated data
-    const offset = (page - 1) * limit;
+    const offset = (validPage - 1) * validLimit; // Use the validated values for pagination
     const { rows } = await sql`
       SELECT id, generation_prompt, generation_timestamp, 
              imgbb_display_url, imgbb_title, imgbb_width, 
              imgbb_height, imgbb_size
       FROM generated_images 
       ORDER BY generation_timestamp DESC
-      LIMIT ${limit} OFFSET ${offset}
+      LIMIT ${validLimit} OFFSET ${offset}
     `;
 
     return rows;
@@ -98,13 +102,22 @@ export async function getImages(page?: number, limit?: number) {
 
 export async function deleteImage(id: number) {
   try {
+    // Check if the image exists
+    const { rows: imageRows } = await sql`
+      SELECT * FROM generated_images WHERE id = ${id}
+    `;
+    if (imageRows.length === 0) {
+      throw new Error('Image not found');
+    }
+
+    // Log deletion and delete image
     await sql`
       INSERT INTO deletion_logs (image_id, deleted_at, image_url)
       SELECT id, NOW(), imgbb_display_url
       FROM generated_images
       WHERE id = ${id}
     `;
-    
+
     await sql`DELETE FROM generated_images WHERE id = ${id}`;
     return { success: true };
   } catch (error) {

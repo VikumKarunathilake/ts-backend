@@ -5,6 +5,7 @@ build/
 
 # Environment variables
 .env
+.env.development.local
 
 # Log files
 logs/
@@ -18,3 +19,4 @@ secrets.yaml
 .DS_Store
 Thumbs.db
 .vercel
+vercel.json
