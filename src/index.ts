@@ -1,7 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { getImages, deleteImage, authenticateWithGoogle } from './api';
-import { OAuth2Client, TokenPayload  } from 'google-auth-library';
+import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { config } from './config';
+import cors from 'cors';
 
 interface UserRequest extends Request {
   user?: {
@@ -12,14 +13,18 @@ interface UserRequest extends Request {
     is_admin: boolean;
   };
 }
-interface CustomTokenPayload extends TokenPayload {
+
+interface ExtendedTokenPayload extends TokenPayload {
   admin?: string;
+  picture?: string;
+  name?: string;
 }
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(cors());
 
 const oauth2Client = new OAuth2Client(config.google.clientId);
 
@@ -37,16 +42,16 @@ const authenticateToken = async (req: UserRequest, res: Response, next: NextFunc
       idToken: idToken,
       audience: config.google.clientId,
     });
-    const payload = ticket.getPayload() as CustomTokenPayload; // Cast to CustomTokenPayload
+    const payload = ticket.getPayload() as ExtendedTokenPayload;
     if (!payload) {
       throw new Error('Invalid token');
     }
     req.user = {
-      id: parseInt(payload['sub'] || ''),
-      username: payload['name'] || '',
-      email: payload['email'] || '',
-      profile_picture: payload['picture'] || '',
-      is_admin: payload.admin === 'true', // Access 'admin' safely
+      id: parseInt(payload.sub),
+      username: payload.name || '',
+      email: payload.email || '',
+      profile_picture: payload.picture || '',
+      is_admin: payload.admin === 'true',
     };
     next();
   } catch (error) {
@@ -83,13 +88,8 @@ app.post('/api/auth/google', async (req: Request, res: Response): Promise<void> 
 // Get images endpoint
 app.get('/api/images', async (req: Request, res: Response): Promise<void> => {
   try {
-    const page = parseInt(req.query.page as string) || 1; // Default to page 1 if invalid
-    const limit = parseInt(req.query.limit as string) || 10; // Default to limit 10 if invalid
-
-    if (isNaN(page) || isNaN(limit)) {
-      res.status(400).json({ error: 'Invalid page or limit values' });
-      return;
-    }
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
 
     const images = await getImages(page, limit);
     res.json(images);
