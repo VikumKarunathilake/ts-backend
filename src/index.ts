@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import { getImages, deleteImage, authenticateWithGoogle } from './api';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { config } from './config';
+import cors from 'cors';
 
 interface UserRequest extends Request {
   user?: {
@@ -22,6 +23,19 @@ interface ExtendedTokenPayload extends TokenPayload {
 const app = express();
 const port = process.env.PORT || 3000;
 
+// CORS configuration
+const allowedOrigins = ['http://localhost:4173', 'http://localhost:5173', 'https://gallery.elixircraft.net'];
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow: boolean) => void) => {
+    if (allowedOrigins.indexOf(origin as string) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'), false);
+    }
+  }
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const oauth2Client = new OAuth2Client(config.google.clientId);
@@ -53,6 +67,7 @@ const authenticateToken = async (req: UserRequest, res: Response, next: NextFunc
     };
     next();
   } catch (error) {
+    console.error("Token verification failed:", error);
     res.status(403).json({ error: 'Invalid token' });
   }
 };
@@ -67,14 +82,14 @@ const isAdmin = (req: UserRequest, res: Response, next: NextFunction): void => {
 
 // Google OAuth login endpoint
 app.post('/api/auth/google', async (req: Request, res: Response): Promise<void> => {
+  const { idToken } = req.body;
+
+  if (!idToken || typeof idToken !== 'string') {
+    res.status(400).json({ error: 'Google ID token is required and must be a string' });
+    return;
+  }
+
   try {
-    const { idToken } = req.body;
-
-    if (!idToken) {
-      res.status(400).json({ error: 'Google ID token is required' });
-      return;
-    }
-
     const result = await authenticateWithGoogle(idToken);
     res.json(result);
   } catch (error) {
