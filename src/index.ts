@@ -23,13 +23,14 @@ interface ExtendedTokenPayload extends TokenPayload {
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Configure CORS to allow requests only from http://localhost:5173
-app.use(cors({
-  origin: 'http://localhost:5173', // Allow only frontend origin during development
-  methods: ['GET', 'POST', 'DELETE'], // Specify allowed methods
-  allowedHeaders: ['Content-Type', 'Authorization'], // Specify allowed headers
-  credentials: true // Include credentials if needed for secure cookies or headers
-}));
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' ? 'https://your-production-site.com' : 'http://localhost:5173',
+  methods: ['GET', 'POST', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+app.use(cors(corsOptions));
+
 
 app.use(express.json());
 
