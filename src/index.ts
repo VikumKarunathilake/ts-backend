@@ -2,7 +2,6 @@ import express, { Request, Response, NextFunction } from 'express';
 import { getImages, deleteImage, authenticateWithGoogle } from './api';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { config } from './config';
-import cors from 'cors';
 
 interface UserRequest extends Request {
   user?: {
@@ -22,15 +21,6 @@ interface ExtendedTokenPayload extends TokenPayload {
 
 const app = express();
 const port = process.env.PORT || 3000;
-
-const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' ? 'https://your-production-site.com' : 'http://localhost:5173',
-  methods: ['GET', 'POST', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-};
-app.use(cors(corsOptions));
-
 
 app.use(express.json());
 
